@@ -1,0 +1,15 @@
+
+\.firebaserc
+
+\.idea/inspectionProfiles/
+
+\.idea/
+
+firebase\.json
+
+functions/lib/*
+functions/node_modules/*
+functions/package.json
+functions/package-lock.json
+functions/tsconfig.json
+functions/tslint.json
