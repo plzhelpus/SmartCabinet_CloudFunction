@@ -13,3 +13,6 @@ functions/package.json
 functions/package-lock.json
 functions/tsconfig.json
 functions/tslint.json
+
+node_modules/*
+package-lock\.json
