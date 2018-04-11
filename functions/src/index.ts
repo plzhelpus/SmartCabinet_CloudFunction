@@ -7,11 +7,11 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
-exports.deleteUser = functions.auth.user().onDelete((userRecord, context)=> {
-   //delete users/userID
-    db.collection('users/{').doc(userRecord.uid).delete();
-    //컬렉션 삭제 해야 함
-});
+// exports.deleteUser = functions.auth.user().onDelete((userRecord, context)=> {
+//    //delete users/userID
+//     db.collection('users/{').doc(userRecord.uid).delete();
+//     //컬렉션 삭제 해야 함
+// });
 
 exports.deleteMemberInGroup = functions.firestore
     .document('users/{userID}/participated_group/{groupID}')
