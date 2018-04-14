@@ -33,14 +33,20 @@ exports.deleteGroupInOwner = functions.firestore
     .document('cabinets/{groupID}')
     .onDelete((snap, context) => {
         //owner_ref의 participated_group에서 해당 group 삭제
-        db.collection('users/' + snap.data().owner_ref + '/participated_group/').doc(context.params.groupID).delete();
+        db.collection('users/' + snap.data().owner_ref + '/participated_group').doc(context.params.groupID).delete();
     });
 
 exports.deleteGroupInAdmin = functions.firestore
-    .document('cabinets/{groupID}/admin_ref/{adminID}')
+    .document('groups/{groupID}/admin_ref/{adminID}')
     .onDelete((snap, context) => {
         //adminID의 participated_group에서 해당 group 삭제
-        db.collection('users/' + context.params.adminID + '/participated_group/').doc(context.params.groupID).delete();
+        db.collection('users/' + context.params.adminID + '/participated_group').doc(context.params.groupID).delete();
+    });
+
+exports.moveMemberToAdmin = functions.firestore
+    .document('groups/{groupID}/admin_ref/{adminID}')
+    .onCreate((snap, context) => {
+        db.collection('groups/' + context.params.groupID + '/admin_ref').doc(context.params.adminID).delete();
     });
 
 exports.deleteGroupInMember = functions.firestore
@@ -71,4 +77,19 @@ exports.deleteMemberInGroup = functions.firestore
     .onDelete((snap, context) => {
         //user 탈퇴한 group의 member_ref에서 해당 user 삭제
         db.collection('groups/' + context.params.groupID + '/member_ref').doc(context.params.userID).delete();
+    });
+
+exports.updateAdmin = functions.firestore
+    .document('groups/{groupID}')
+    .onUpdate((change, context) => {
+        //Owner로 올라갔을 경우 기존 Owner를 Admin으로 변경
+        const nowData = change.after.data();
+        const nowOwner = nowData.split('/users/')[1];
+        const beforeData = change.before.data();
+        const beforeOwner = beforeData.split('/users/')[1];
+        db.collection('groups/' + context.params.grouID + '/admin_ref').doc(nowOwner).delete();
+        db.collection('groups/' + context.params.grouID + '/member_ref').doc(nowOwner).delete();
+        db.collection('groups/' + context.params.groupID + '/admin_ref').doc(beforeOwner).set({
+            user_ref : beforeData
+        });
     });
