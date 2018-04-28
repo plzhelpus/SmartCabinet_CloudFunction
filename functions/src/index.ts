@@ -1,4 +1,5 @@
 import * as cloudfunctions from 'firebase-functions';
+import {user} from "firebase-functions/lib/providers/auth";
 
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
@@ -6,18 +7,58 @@ const functions = require('firebase-functions');
 admin.initializeApp();
 
 const db = admin.firestore();
+// const batch = db.batch();
 
 exports.createUser = functions.auth.user().onCreate((userRecord, context) => {
     //Create users/userID
-    db.collection('users').doc(userRecord.uid).set({});
+    db.collection('users').doc(userRecord.uid).set({
+        email : userRecord.email
+    });
     // db.collection('users').doc(userRecord.uid).collection('participated_group').set({});
 });
 
+function deleteCollection(collectionPath, batchSize){
+    const collectionRef = db.collection(collectionPath);
+    const query = collectionRef.orderBy('__name__').limit(batchSize);
+
+    return new Promise((resolve, reject) => {
+        deleteQueryBatch(query, batchSize, resolve, reject);
+    });
+}
+
+function deleteQueryBatch(query, batchSize, resolve, reject){
+    query.get().then((snapshot)=>{
+        if(snapshot.size === 0){
+            return 0;
+        }
+
+        const batch = db.batch();
+        snapshot.docs.forEach((doc)=>{
+            batch.delete(doc.ref);
+        });
+
+        return batch.commit().then(()=>{
+            return snapshot.size;
+        });
+    }).then((numDeleted)=>{
+        if(numDeleted === 0){
+            resolve();
+            return;
+        }
+        process.nextTick(()=>{
+            deleteQueryBatch(query, batchSize, resolve, reject);
+        });
+    }).catch(reject);
+}
+
 exports.deleteUser = functions.auth.user().onDelete((userRecord, context)=> {
    //delete users/userID
-    db.collection('users').doc(userRecord.uid).collection('participated_group').delete();
+
+    // db.collection('users').doc(userRecord.uid).collection('participated_group').delete();
+
     //삭제 안되는 중. collection에 삭제 없나?
     db.collection('users').doc(userRecord.uid).delete();
+    return deleteCollection('users/' + userRecord.uid + '/participated_group/', 100);
     //컬렉션 삭제 해야 함
 });
 
