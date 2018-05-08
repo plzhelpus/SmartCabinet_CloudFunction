@@ -3,7 +3,6 @@ import {user} from "firebase-functions/lib/providers/auth";
 
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
-
 admin.initializeApp();
 
 const db = admin.firestore();
@@ -55,11 +54,8 @@ exports.deleteUser = functions.auth.user().onDelete((userRecord, context)=> {
    //delete users/userID
 
     // db.collection('users').doc(userRecord.uid).collection('participated_group').delete();
-
-    //삭제 안되는 중. collection에 삭제 없나?
     db.collection('users').doc(userRecord.uid).delete();
     return deleteCollection('users/' + userRecord.uid + '/participated_group/', 100);
-    //컬렉션 삭제 해야 함
 });
 
 exports.deleteMemberInGroup = functions.firestore
@@ -75,7 +71,9 @@ exports.addCabinetToGroup = functions.firestore
     .onCreate((snap, context) => {
         //cabinet가 가진 group_refo의 cabinet_refo에 해당 cabinet 추가
         db.collection('groups').doc(context.params.grouID).collection('cabinet_ref').doc(context.params.cabinetID).set({
-            cabinet_ref : context.param.cabinetID
+            cabinet_ref : context.param.cabinetID,
+            // description : ''
+            serial_key : ''
         });
     });
 
@@ -106,18 +104,19 @@ exports.deleteGroupInMember = functions.firestore
         db.collection('users').doc(context.params.memberID).collection('participated_group').doc(context.params.groupId).delete();
     });
 
-exports.deleteCabinet = functions.firestore
-    .document('groups/{groupID}/cabinet_ref/{cabinetID}')
-    .onDelete((snap, context) => {
-        //cabinet_ref에 속한 cabinet의 group_ref에서 해당 group 삭제
-        db.collection('cabinets').doc(context.params.cabinetID).delete();
-    });
+// exports.deleteCabinet = functions.firestore
+//     .document('groups/{groupID}/cabinet_ref/{cabinetID}')
+//     .onDelete((snap, context) => {
+//         //cabinet_ref에 속한 cabinet의 group_ref에서 해당 group 삭제
+//         db.collection('cabinets').doc(context.params.cabinetID).delete();
+//     });
 
 exports.addGroupToMember = functions.firestore
     .document('groups/{groupID}/member_ref/{memberID}')
     .onCreate((snap, context) => {
         //group에 초대한 user의 participated_ref에 해당 group 추가
         db.collection('users').doc(context.params.memberID).collection('participated_group').doc(context.params.groupID).set({
+            group_name : '', //쿼리로 그룹 이름 가져와야 ㅎ ㅏㅁ.
             group_ref : context.params.groupID
         });
     });
@@ -140,6 +139,7 @@ exports.updateAdmin = functions.firestore
         db.collection('groups').doc(context.params.groupID).collection('admin_ref').doc(nowOwner).delete();
         db.collection('groups').doc(context.params.groupID).collection('member_ref').doc(nowOwner).delete();
         db.collection('groups').doc(context.params.groupID).collection('admin_ref').doc(beforeOwner).set({
-            user_ref : beforeData
+            user_ref : beforeData,
+            email : '' //이메일 넣어야 함.
         });
     });
