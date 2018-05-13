@@ -53,16 +53,30 @@ function deleteQueryBatch(query, batchSize, resolve, reject){
 
 exports.deleteUser = functions.auth.user().onDelete((userRecord, context)=> {
    //delete users/userID
-    db.collection('users').doc(userRecord.uid).delete();
-    return deleteCollection('users/' + userRecord.uid + '/participated_group/', 100);
+    db.collection('users').doc(userRecord.uid).delete().then(() => {
+        return deleteCollection('users/' + userRecord.uid + '/participated_group/', 100);
+    });
+    // return deleteCollection('users/' + userRecord.uid + '/participated_group/', 100);
 });
 
+exports.deleteAllFromGroup = functions.firestore
+    .document('groups/{groupID}')
+    .onDelete((snap, context) => {
+        // return deleteCollection('users/' + context.params.groupID + '/admin_ref', 100)
+        //     .then(exports.deleteParticipatedGroupInOwner)
+        //     .then(exports.dleeteGroupInCabinet)
+        //     .then(exports.deleteGroupInAdmin)
+        //     .then(exports.deleteGroupInMember)
+
+        //TODO: delete All lower collections in this document.
+    });
+
 exports.deleteParticipatedGroupInOwner = functions.firestore
-    .document('cabinets/{groupID}')
+    .document('groups/{groupID}')
     .onDelete((snap, context) => {
         //owner_ref의 participated_group에서 해당 group 삭제
-        return db.collection('users').doc(snap.data().owner_ref).collection('participated_group').doc(context.params.group).delete().then(() => {
-            console.log('Participated Group is deleted frou Owner at ${res.updateTime}')
+        return db.collection('users').doc(snap.data().owner_ref).collection('participated_group').doc(context.params.groupID).delete().then(() => {
+            console.log('Participated Group is deleted from Owner');
         });
     });
 
@@ -77,11 +91,27 @@ exports.deleteGroupInCabinet = functions.firestore
         });
     });
 
+exports.deleteGroupInAdmin = functions.firestore
+    .document('groups/{groupID}/admin_ref/{adminID}')
+    .onDelete((snap, context) => {
+        return db.collection('users').doc(context.param.adminID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
+            console.log('Participated Group is deleted from Admin');
+        })
+    })
+
+exports.deleteGroupInMember = functions.firestore
+    .document('groups/{groupId}/member_ref/{memberID}')
+    .onDelete((snap, context) => {
+        return db.collection('users').doc(context.param.memberID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
+            console.log('Participated Group is deleted from Member');
+        })
+    })
+
 exports.addParticipatedGroupToMember = functions.firestore
     .document('groups/{groupID}/member_ref/{memberID}')
     .onCreate((snap, context) => {
         //group에 초대한 user의 participated_ref에 해당 group 추가
-        const group_name = db.collection('groups').doc(context.params.groupID).get().data.group_name;
+        const group_name = db.collection('groups').doc(context.params.groupID).get('group_name');
         return db.collection('users').doc(context.params.memberID).collection('participated_group').doc(context.params.groupID).set({
             group_name : group_name,
             group_ref : context.params.groupID
@@ -90,25 +120,15 @@ exports.addParticipatedGroupToMember = functions.firestore
         });
     });
 
-exports.addCabinetToGroup = functions.https.onCall((data, context) => {
-    //cabinet가 가진 group_refo의 cabinet_refo에 해당 cabinet 추가
-    return db.collection('groups').doc(context.params.grouID).collection('cabinet_ref').doc(context.params.cabinetID).set({
-        cabinet_ref : context.param.cabinetID,
-        description : '',
-        serial_key : ''
-    }).then(() => {
-        console.log('add cabinet to specific group')
-        return {cabinet_ref : context.param.cabinID};
-    });
-});
 
-// exports.addCabinetToGroup = functions.firestore
-//     .document('cabinets/{cabinetID}')
-//     .onCreate((snap, context) => {
-//         //cabinet가 가진 group_refo의 cabinet_refo에 해당 cabinet 추가
-//         db.collection('groups').doc(context.params.grouID).collection('cabinet_ref').doc(context.params.cabinetID).set({
-//             cabinet_ref : context.param.cabinetID,
-//             description : '',
-//             serial_key : ''
-//         });
+// exports.addCabinetToGroup = functions.https.onCall((data, context) => {
+//     //cabinet가 가진 group_refo의 cabinet_refo에 해당 cabinet 추가
+//     return db.collection('groups').doc(context.params.grouID).collection('cabinet_ref').doc(context.params.cabinetID).set({
+//         cabinet_ref : context.param.cabinetID,
+//         description : '',
+//         serial_key : ''
+//     }).then(() => {
+//         console.log('add cabinet to specific group');
+//         return {cabinet_ref : context.param.cabinID};
 //     });
+// });
