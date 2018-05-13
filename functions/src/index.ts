@@ -90,22 +90,22 @@ exports.deleteGroupInCabinet = functions.firestore
             console.log('Group is deleted from cabinet at ${res.updateTime}');
         });
     });
-
-exports.deleteGroupInAdmin = functions.firestore
-    .document('groups/{groupID}/admin_ref/{adminID}')
-    .onDelete((snap, context) => {
-        return db.collection('users').doc(context.param.adminID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
-            console.log('Participated Group is deleted from Admin');
-        })
-    })
-
-exports.deleteGroupInMember = functions.firestore
-    .document('groups/{groupId}/member_ref/{memberID}')
-    .onDelete((snap, context) => {
-        return db.collection('users').doc(context.param.memberID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
-            console.log('Participated Group is deleted from Member');
-        })
-    })
+//
+// exports.deleteGroupInAdmin = functions.firestore
+//     .document('groups/{groupID}/admin_ref/{adminID}')
+//     .onDelete((snap, context) => {
+//         return db.collection('users').doc(context.param.adminID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
+//             console.log('Participated Group is deleted from Admin');
+//         })
+//     })
+//
+// exports.deleteGroupInMember = functions.firestore
+//     .document('groups/{groupId}/member_ref/{memberID}')
+//     .onDelete((snap, context) => {
+//         return db.collection('users').doc(context.param.memberID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
+//             console.log('Participated Group is deleted from Member');
+//         })
+//     })
 
 exports.addParticipatedGroupToMember = functions.firestore
     .document('groups/{groupID}/member_ref/{memberID}')
