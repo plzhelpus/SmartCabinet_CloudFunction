@@ -26,15 +26,55 @@ function deleteCollection(collectionPath, batchSize){
     });
 }
 
+function deleteCollection_nested(collectionPath, batchSize){
+    const collectionRef = db.collection(collectionPath);
+    const query = collectionRef.orderBy('__name__').limit(batchSize);
+
+    return new Promise((resolve, reject) => {
+        deleteQueryBatchAndDocs(query, batchSize, resolve, reject);
+    });
+}
+
 function deleteQueryBatch(query, batchSize, resolve, reject){
     query.get().then((snapshot)=>{
         if(snapshot.size === 0){
-            return 0;
+            return new Promise(function(){
+                console.log('All documents deleted.');
+            });
         }
 
         const batch = db.batch();
         snapshot.docs.forEach((doc)=>{
             batch.delete(doc.ref);
+        });
+
+        return batch.commit().then(()=>{
+            return snapshot.size;
+        });
+    }).then((numDeleted)=>{
+        if(numDeleted === 0){
+            resolve();
+            return;
+        }
+        process.nextTick(()=>{
+            deleteQueryBatch(query, batchSize, resolve, reject);
+        });
+    }).catch(reject);
+}
+
+function deleteQueryBatchAndDocs(query, batchSize, resolve, reject){
+    query.get().then((snapshot)=>{
+        if(snapshot.size === 0){
+            return new Promise(function(){
+                console.log('All documents deleted.');
+            });
+        }
+
+        const batch = db.batch();
+        snapshot.docs.forEach((doc)=>{
+            batch.delete(doc.ref);
+            const user_ref = doc.user_ref;
+            batch.delete(user_ref);
         });
 
         return batch.commit().then(()=>{
@@ -67,7 +107,11 @@ exports.deleteAllFromGroup = functions.firestore
         //     .then(exports.dleeteGroupInCabinet)
         //     .then(exports.deleteGroupInAdmin)
         //     .then(exports.deleteGroupInMember)
-
+        return Promise.all([deleteCollection_nested('groups/' + context.params.groupID + '/admin_ref/', 100),
+                                    deleteCollection_nested('groups/' + context.params.groupID + '/member_ref/', 100),
+                                    deleteCollection('groups/' + context.params.groupID + '/cabinet_ref/', 100)]).then(function(){
+                                        console.log('delete all lower documents and nested information.');
+        });
         //TODO: delete All lower collections in this document.
     });
 
@@ -107,28 +151,41 @@ exports.deleteGroupInCabinet = functions.firestore
 //         })
 //     })
 
-exports.addParticipatedGroupToMember = functions.firestore
-    .document('groups/{groupID}/member_ref/{memberID}')
-    .onCreate((snap, context) => {
-        //group에 초대한 user의 participated_ref에 해당 group 추가
-        const group_name = db.collection('groups').doc(context.params.groupID).get('group_name');
-        return db.collection('users').doc(context.params.memberID).collection('participated_group').doc(context.params.groupID).set({
-            group_name : group_name,
-            group_ref : context.params.groupID
-        }).then(res => {
-            console.log('Group is added to Member\'s ParticipatedGroup at ${res.updateTime}');
-        });
-    });
-
-
-// exports.addCabinetToGroup = functions.https.onCall((data, context) => {
-//     //cabinet가 가진 group_refo의 cabinet_refo에 해당 cabinet 추가
-//     return db.collection('groups').doc(context.params.grouID).collection('cabinet_ref').doc(context.params.cabinetID).set({
-//         cabinet_ref : context.param.cabinetID,
-//         description : '',
-//         serial_key : ''
-//     }).then(() => {
-//         console.log('add cabinet to specific group');
-//         return {cabinet_ref : context.param.cabinID};
+//TODO : 일반 호출 함수 addMember로 변경해야 함.
+// exports.addParticipatedGroupToMember = functions.firestore
+//     .document('groups/{groupID}/member_ref/{memberID}')
+//     .onCreate((snap, context) => {
+//         //group에 초대한 user의 participated_ref에 해당 group 추가
+//         const group_name = db.collection('groups').doc(context.params.groupID).get('group_name');
+//         return db.collection('users').doc(context.params.memberID).collection('participated_group').doc(context.params.groupID).set({
+//             group_name : group_name,
+//             group_ref : context.params.groupID
+//         }).then(res => {
+//             console.log('Group is added to Member\'s ParticipatedGroup at ${res.updateTime}');
+//         });
 //     });
-// });
+
+exports.addMemberToGroup = functions.https.onCall((data, context) => {
+   return db.collection('groups').doc(data.groupID).collection('cabinet_ref').doc(context.auth.uid).set({
+       "email" : context.auth.token.email,
+       "user_ref" : context.params.id
+   }).then(() => {
+       db.collection('users').doc(context.params.id).collection('participated_group').doc(data.groupID).set({
+           "group_name" : data.groupName,
+           "group_ref" : data.groupID
+       }).then(() => {
+           console.log('Add user as member in group and group as participated_group in user');
+       });
+   });
+});
+
+exports.addCabinetToGroup = functions.https.onCall((data, context) => {
+    //cabinet가 가진 group_refo의 cabinet_refo에 해당 cabinet 추가
+    return db.collection('groups').doc(data.groupID).collection('cabinet_ref').doc(data.cabinetID).set({
+        cabinet_ref : data.cabinetID,
+        description : ''
+    }).then(() => {
+        console.log('add cabinet to specific group');
+        return {cabinet_ref : data.cabintID};
+    });
+});
