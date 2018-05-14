@@ -72,9 +72,9 @@ function deleteQueryBatchAndDocs(query, batchSize, resolve, reject){
 
         const batch = db.batch();
         snapshot.docs.forEach((doc)=>{
+            const group_id = doc.ref.parent.parent.id;
+            batch.delete(doc.get('user_ref').collection('participated_group').doc(group_id));
             batch.delete(doc.ref);
-            const user_ref = doc.user_ref;
-            batch.delete(user_ref);
         });
 
         return batch.commit().then(()=>{
@@ -96,18 +96,13 @@ exports.deleteUser = functions.auth.user().onDelete((userRecord, context)=> {
     db.collection('users').doc(userRecord.uid).delete().then(() => {
         return deleteCollection('users/' + userRecord.uid + '/participated_group/', 100);
     });
-    // return deleteCollection('users/' + userRecord.uid + '/participated_group/', 100);
 });
 
 exports.deleteAllFromGroup = functions.firestore
     .document('groups/{groupID}')
     .onDelete((snap, context) => {
-        // return deleteCollection('users/' + context.params.groupID + '/admin_ref', 100)
-        //     .then(exports.deleteParticipatedGroupInOwner)
-        //     .then(exports.dleeteGroupInCabinet)
-        //     .then(exports.deleteGroupInAdmin)
-        //     .then(exports.deleteGroupInMember)
-        return Promise.all([deleteCollection_nested('groups/' + context.params.groupID + '/admin_ref/', 100),
+        return Promise.all([db.doc(snap.owner_ref).collection('participated_group').doc(context.params.groupID).delete(),
+                                    deleteCollection_nested('groups/' + context.params.groupID + '/admin_ref/', 100),
                                     deleteCollection_nested('groups/' + context.params.groupID + '/member_ref/', 100),
                                     deleteCollection('groups/' + context.params.groupID + '/cabinet_ref/', 100)]).then(function(){
                                         console.log('delete all lower documents and nested information.');
@@ -127,46 +122,16 @@ exports.deleteParticipatedGroupInOwner = functions.firestore
 exports.deleteGroupInCabinet = functions.firestore
     .document('groups/{groupID}/cabinet_ref/{cabinetID}')
     .onDelete((snap, context) => {
-        //cabinet_ref에 속한 cabinet의 group_ref에서 해당 group 삭제
+        //cabinet_ref에 속한 cabinet의 group_ref에서 그룹 정보 초기화
         return db.collection('cabinets').doc(context.params.cabinetID).update({
             "group_ref" : null
         }).then(res => {
             console.log('Group is deleted from cabinet at ${res.updateTime}');
         });
     });
-//
-// exports.deleteGroupInAdmin = functions.firestore
-//     .document('groups/{groupID}/admin_ref/{adminID}')
-//     .onDelete((snap, context) => {
-//         return db.collection('users').doc(context.param.adminID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
-//             console.log('Participated Group is deleted from Admin');
-//         })
-//     })
-//
-// exports.deleteGroupInMember = functions.firestore
-//     .document('groups/{groupId}/member_ref/{memberID}')
-//     .onDelete((snap, context) => {
-//         return db.collection('users').doc(context.param.memberID).collection('participated_group').doc(context.prams.groupID).delete().then(() => {
-//             console.log('Participated Group is deleted from Member');
-//         })
-//     })
-
-//TODO : 일반 호출 함수 addMember로 변경해야 함.
-// exports.addParticipatedGroupToMember = functions.firestore
-//     .document('groups/{groupID}/member_ref/{memberID}')
-//     .onCreate((snap, context) => {
-//         //group에 초대한 user의 participated_ref에 해당 group 추가
-//         const group_name = db.collection('groups').doc(context.params.groupID).get('group_name');
-//         return db.collection('users').doc(context.params.memberID).collection('participated_group').doc(context.params.groupID).set({
-//             group_name : group_name,
-//             group_ref : context.params.groupID
-//         }).then(res => {
-//             console.log('Group is added to Member\'s ParticipatedGroup at ${res.updateTime}');
-//         });
-//     });
 
 exports.addMemberToGroup = functions.https.onCall((data, context) => {
-   return db.collection('groups').doc(data.groupID).collection('cabinet_ref').doc(context.auth.uid).set({
+   return db.collection('groups').doc(data.groupID).collection('member_ref').doc(context.auth.uid).set({
        "email" : context.auth.token.email,
        "user_ref" : context.params.id
    }).then(() => {
@@ -177,6 +142,7 @@ exports.addMemberToGroup = functions.https.onCall((data, context) => {
            console.log('Add user as member in group and group as participated_group in user');
        });
    });
+   //TODO : error 뱉기
 });
 
 exports.addCabinetToGroup = functions.https.onCall((data, context) => {
