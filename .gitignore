@@ -10,3 +10,5 @@ firebase\.json
 functions/lib/*
 functions/node_modules/*
 
+// vs code settings
+.vscode/
