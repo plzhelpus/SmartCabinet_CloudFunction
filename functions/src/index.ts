@@ -7,6 +7,7 @@ import * as functions from "firebase-functions";
 admin.initializeApp();
 
 const db = admin.firestore();
+const realtimeDb = admin.database();
 
 /**
  * 지정된 컬렉션의 모든 문서를 삭제함.
@@ -175,21 +176,36 @@ function isAdminOrOwnerInGroup(groupId, userId) {
   const userRef = db.collection("users").doc(userId);
   const groupRef = db.collection("groups").doc(groupId);
   const groupAdminRef = groupRef.collection("admin_ref");
-  // 해당 유저가 소유자인지 확인
   return groupRef.get().then(groupDoc => {
+    // 해당 유저가 소유자가 아니라면 관리자인지 확인
     if (userRef != groupDoc.get("owner_ref")) {
       return groupAdminRef
         .doc(userRef.id)
         .get()
         .then(findResultFromAdmin => {
-          if (!findResultFromAdmin.exists) {
-            return false;
-          }
-          return true;
+          return findResultFromAdmin.exists;
         });
     }
     return true;
   });
+}
+
+/**
+ * 해당 사용자가 이 그룹의 일반 회원인지 확인함.
+ * @param groupId 그룹의 id
+ * @param userId 사용자의 uid
+ * @returns 해당 그룹의 일반 회원이면 true, 그 이외는 false
+ */
+function isGroupMember(groupId, userId) {
+  return db
+    .collection("groups")
+    .doc(groupId)
+    .collection("member_ref")
+    .doc(userId)
+    .get()
+    .then(findResultFromMember => {
+      return findResultFromMember.exists;
+    });
 }
 
 /**
@@ -239,7 +255,7 @@ exports.addMemberToGroup = functions.https.onCall((data, context) => {
           })
       ]);
     })
-    .then(writeResult => {
+    .then(writeResults => {
       console.log(
         "Add user as member in group and group as participated_group in user"
       );
@@ -293,7 +309,7 @@ exports.addCabinetToGroup = functions.https.onCall((data, context) => {
       }
     })
     .then(() => {
-      db
+      return db
         .collection("groups")
         .doc(data.groupId)
         .collection("cabinet_ref")
@@ -301,14 +317,14 @@ exports.addCabinetToGroup = functions.https.onCall((data, context) => {
         .set({
           cabinet_ref: data.cabinetId,
           description: ""
-        })
-        .then(() => {
-          console.log("add cabinet to specific group");
-          return {
-            cabinetId: data.cabinetId,
-            groupId: data.groupId
-          };
         });
+    })
+    .then(writeResult => {
+      console.log("add cabinet to specific group");
+      return {
+        cabinetId: data.cabinetId,
+        groupId: data.groupId
+      };
     });
 });
 
@@ -329,6 +345,7 @@ exports.createGroup = functions.https.onCall((data, context) => {
       return admin.auth().getUser(context.auth.uid);
     })
     .then(ownerUserRecord => {
+      // FIXME: 이 두 문서 중 하나만 생성하고 에러가 났다면 DB가 오염됨
       return db
         .collection("groups")
         .add({
@@ -346,11 +363,11 @@ exports.createGroup = functions.https.onCall((data, context) => {
               group_name: data.groupName,
               group_ref: groupRef
             });
-        })
-        .then(result => {
-          console.log("create new group");
-          return { groupName: data.groupName };
         });
+    })
+    .then(result => {
+      console.log("create new group");
+      return { groupName: data.groupName };
     });
 });
 
@@ -360,9 +377,46 @@ exports.createGroup = functions.https.onCall((data, context) => {
  * cabinetId: 열려고 하는 사물함의 cabinets 컬렉션 내의 문서의 ID(cabinets/{cabinetId})
  */
 exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
-  // TODO: 해당 사물함이 존재하는지 확인함.
-  // TODO: 해당 사용자가 사물함을 열 권한이 있는지 확인함.
-  // TODO: 해당 사물함의 RealtimeDB에서의 열림 상태를 받아와서 바꿈.
+  return db
+    .collection("cabinets")
+    .doc(data.cabinetId)
+    .get()
+    .then(cabinetDoc => {
+      if (cabinetDoc == null && !cabinetDoc.exists) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Cabinet not exist"
+        );
+      }
+      const groupRefOfCabinet = cabinetDoc.get("group_ref");
+      // 그룹에 속하지 않은 사물함도 열 권한이 없다고 간주함.
+      if (groupRefOfCabinet == null) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Permission denied"
+        );
+      }
+      return isGroupMember(groupRefOfCabinet.id, context.auth.uid).then(
+        memberPermissionResult => {
+          if (!memberPermissionResult) {
+            return isAdminOrOwnerInGroup(
+              groupRefOfCabinet.id,
+              context.auth.uid
+            );
+          }
+          return true;
+        }
+      );
+    })
+    .then(adminPermissionResult => {
+      if (!adminPermissionResult) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Permission denied"
+        );
+      }
+      // TODO: 해당 사물함의 RealtimeDB에서의 열림 상태를 받아와서 바꿈.
+    });
 });
 
 /**
