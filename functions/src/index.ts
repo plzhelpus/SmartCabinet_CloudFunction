@@ -139,15 +139,29 @@ function deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
  * @returns 해당 유저의 uid, 존재하지 않으면 null
  */
 function findUserIdByEmail(email) {
-  const collectionRef = db.collection("users");
+  return admin
+    .auth()
+    .getUserByEmail(email)
+    .then(userRecord => {
+      return userRecord.email;
+    });
+}
+
+/**
+ * 해당 그룹 이름을 가진 그룹이 이미 존재하는지 확인함.
+ * @param groupName 그룹 이름
+ * @returns 그룹이 존재하면 true, 아니면 false
+ */
+function isGroupExist(groupName) {
+  const collectionRef = db.collection("groups");
   return collectionRef
-    .where("email", "==", email)
+    .where("group_name", "==", groupName)
     .get()
     .then(snapshot => {
       if (snapshot.size == 0) {
-        return null;
+        return false;
       }
-      return snapshot.docs[0].id;
+      return true;
     });
 }
 
@@ -304,9 +318,40 @@ exports.addCabinetToGroup = functions.https.onCall((data, context) => {
  * groupName: 새로 생성될 그룹의 이름
  */
 exports.createGroup = functions.https.onCall((data, context) => {
-  // TODO: 이 이름을 가진 기존 그룹이 있는지 확인함
-  // TODO: 새 그룹을 생성함
-  // TODO: 자신을 소유자로 넣고, 자신의 소속된 그룹에 이 그룹을 추가함
+  return isGroupExist(data.groupName)
+    .then(isThisGroupExist => {
+      if (isThisGroupExist) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Duplicated group name"
+        );
+      }
+      return admin.auth().getUser(context.auth.uid);
+    })
+    .then(ownerUserRecord => {
+      return db
+        .collection("groups")
+        .add({
+          group_name: data.groupName,
+          owner_ref: db.collection("users").doc(ownerUserRecord.uid),
+          owner_email: ownerUserRecord.email
+        })
+        .then(groupRef => {
+          return db
+            .collection("users")
+            .doc(ownerUserRecord.uid)
+            .collection("participated_group")
+            .doc(groupRef.id)
+            .set({
+              group_name: data.groupName,
+              group_ref: groupRef
+            });
+        })
+        .then(result => {
+          console.log("create new group");
+          return { groupName: data.groupName };
+        });
+    });
 });
 
 /**
