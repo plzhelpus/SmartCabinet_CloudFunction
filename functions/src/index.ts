@@ -117,15 +117,9 @@ exports.deleteGroupInCabinet = functions.firestore
         });
     });
 
-function findUserRef(collectionPath, email) {
+function findUserDoc(collectionPath, email) {
     const collectionRef = db.collection(collectionPath);
-    return collectionRef.where("email", "==", email).get().then((snapshot) => {
-        if (snapshot.size === 0) {
-            throw new HttpsError("invalid-argument", "User not exist");
-        } else {
-            return snapshot.docs()[0].id;
-        }
-    });
+    return collectionRef.where("email", "==", email).get();
 }
 
 function hasAuthority(docPath, userID) {
@@ -136,7 +130,7 @@ function hasAuthority(docPath, userID) {
         if (userRef !== groupDoc.get("owner_ref")) {
             return groupAdminRef.doc(userRef.id).get().then((adminDoc) => {
                 if (!adminDoc.exists) {
-                    throw new HttpsError("invalid-argument", "Permission denied");
+                    throw new functions.https.HttpsError("invalid-argument", "Permission denied");
                 }
             });
         }
@@ -144,19 +138,24 @@ function hasAuthority(docPath, userID) {
 }
 
 exports.addMemberToGroup = functions.https.onCall((data, context) => {
-    return hasAuthority("groups/" + data.groupID, context.params.id).then(() => {
-        return findUserRef("users/", data.email);
-    }).then((user_id) => {
-        return db.collection("groups").doc(data.groupID).collection("member_ref").doc(user_id).set({
-            email: data.email,
-            user_ref: user_id,
-        });
-    }).then((user_id) => {
-        db.collection("users").doc(user_id).collection("participated_group").doc(data.groupID).set({
-            group_name: data.groupName,
-            group_ref: data.groupID,
-        });
-    }).then(() => {
+    return hasAuthority("groups/" + data.groupID, context.auth.uid).then(() => {
+        return findUserDoc("users/", data.email);
+    }).then((snapshot) => {
+        (snapshot) => {
+            if (snapshot.size === 0) {
+                throw new functions.https.HttpsError("invalid-argument", "User not exist");
+            } else {
+                const user_id = snapshot.docs[0].id;
+                return Promise.all([db.collection("groups").doc(data.groupID).collection("member_ref").doc(user_id).set({
+                    email: data.email,
+                    user_ref: user_id,
+                }), db.collection("users").doc(user_id).collection("participated_group").doc(data.groupID).set({
+                    group_name: data.groupName,
+                    group_ref: data.groupID,
+                })])
+            }
+        }
+    }).then((writeResult) => {
         console.log("Add user as member in group and group as participated_group in user");
     });
     // TODO : email을 users{userID}에서 찾아서 있으면 그 userID 사용, 없으면 error 뱉기
