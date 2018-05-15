@@ -33,7 +33,7 @@ function deleteQueryBatch(query, batchSize, resolve, reject) {
   query
     .get()
     .then(snapshot => {
-      if (snapshot.size === 0) {
+      if (snapshot.size == 0) {
         return 0;
       }
 
@@ -95,7 +95,7 @@ function deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
   query
     .get()
     .then(snapshot => {
-      if (snapshot.size === 0) {
+      if (snapshot.size == 0) {
         return 0;
       }
 
@@ -144,7 +144,7 @@ function findUserIdByEmail(email) {
     .where("email", "==", email)
     .get()
     .then(snapshot => {
-      if (snapshot.size === 0) {
+      if (snapshot.size == 0) {
         return null;
       }
       return snapshot.docs[0].id;
@@ -163,7 +163,7 @@ function isAdminOrOwnerInGroup(groupId, userId) {
   const groupAdminRef = groupRef.collection("admin_ref");
   // 해당 유저가 소유자인지 확인
   return groupRef.get().then(groupDoc => {
-    if (userRef !== groupDoc.get("owner_ref")) {
+    if (userRef != groupDoc.get("owner_ref")) {
       return groupAdminRef
         .doc(userRef.id)
         .get()
@@ -243,18 +243,38 @@ exports.addMemberToGroup = functions.https.onCall((data, context) => {
  * serialKey: 추가할 사물함의 시리얼 키
  */
 exports.addCabinetToGroup = functions.https.onCall((data, context) => {
-  // TODO: 요청한 사용자가 이 그룹의 관리자 또는 소유자인지 확인
-  // TODO: 사물함이 존재하는지 확인
-  // TODO: 이미 사물함이 다른 그룹에 가입되었는지 확인
-  // TODO: 사물함의 serialKey와 일치하는지 확인
-
-  // cabinet가 가진 group_ref의 cabinet_ref에 해당 cabinet 추가
   return isAdminOrOwnerInGroup(data.groupId, context.auth.uid)
     .then(isAdminOrOwner => {
       if (!isAdminOrOwner) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Permission denied"
+        );
+      }
+      return db
+        .collection("cabinets")
+        .doc(data.cabinetId)
+        .get();
+    })
+    .then(cabinetDoc => {
+      if (cabinetDoc == null && !cabinetDoc.exists) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Cabinet not exist"
+        );
+      }
+      const expectedSerialKey = cabinetDoc.get("serial_key");
+      if (expectedSerialKey != data.serialKey) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Invalid serial key"
+        );
+      }
+      const groupRefOfCabinet = cabinetDoc.get("group_ref");
+      if (groupRefOfCabinet != null) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Cabinet already has group"
         );
       }
     })
@@ -304,7 +324,6 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
  * 사용자가 가입할 때, 해당 사용자의 문서를 users 컬렉션에 생성함.
  */
 exports.createUser = functions.auth.user().onCreate((userRecord, context) => {
-  // Create users/userId
   return db
     .collection("users")
     .doc(userRecord.uid)
@@ -322,7 +341,6 @@ exports.createUser = functions.auth.user().onCreate((userRecord, context) => {
 exports.deleteCabinetInGroup = functions.firestore
   .document("groups/{groupId}/cabinet_ref/{cabinetId}")
   .onDelete((snap, context) => {
-    // cabinet_ref에 속한 cabinet의 group_ref에서 그룹 정보 초기화
     return db
       .collection("cabinets")
       .doc(context.params.cabinetId)
@@ -339,7 +357,6 @@ exports.deleteCabinetInGroup = functions.firestore
  * 주의: 이 함수는 해당 사용자가 아무런 그룹에도 속하지 않았을 때를 가정하고 동작합니다. 만약 소속된 그룹에 대한 처리가 필요하다면 수정하세요.
  */
 exports.deleteUser = functions.auth.user().onDelete((userRecord, context) => {
-  // delete users/userId
   return db
     .collection("users")
     .doc(userRecord.uid)
