@@ -100,7 +100,7 @@ exports.deleteAllFromGroup = functions.firestore
             deleteCollection_nested("groups/" + context.params.groupID + "/admin_ref/", 100),
             deleteCollection_nested("groups/" + context.params.groupID + "/member_ref/", 100),
             deleteCollection("groups/" + context.params.groupID + "/cabinet_ref/", 100),
-        ]).then(function() {
+        ]).then(function () {
             console.log("delete all lower documents and nested information.");
         });
         // TODO: delete All lower collections in this document.
@@ -134,6 +134,7 @@ function hasAuthority(docPath, userID) {
                 }
             });
         }
+        return null;
     });
 }
 
@@ -141,19 +142,17 @@ exports.addMemberToGroup = functions.https.onCall((data, context) => {
     return hasAuthority("groups/" + data.groupID, context.auth.uid).then(() => {
         return findUserDoc("users/", data.email);
     }).then((snapshot) => {
-        (snapshot) => {
-            if (snapshot.size === 0) {
-                throw new functions.https.HttpsError("invalid-argument", "User not exist");
-            } else {
-                const user_id = snapshot.docs[0].id;
-                return Promise.all([db.collection("groups").doc(data.groupID).collection("member_ref").doc(user_id).set({
-                    email: data.email,
-                    user_ref: user_id,
-                }), db.collection("users").doc(user_id).collection("participated_group").doc(data.groupID).set({
-                    group_name: data.groupName,
-                    group_ref: data.groupID,
-                })])
-            }
+        if (snapshot.size === 0) {
+            throw new functions.https.HttpsError("invalid-argument", "User not exist");
+        } else {
+            const user_id = snapshot.docs[0].id;
+            return Promise.all([db.collection("groups").doc(data.groupID).collection("member_ref").doc(user_id).set({
+                email: data.email,
+                user_ref: user_id,
+            }), db.collection("users").doc(user_id).collection("participated_group").doc(data.groupID).set({
+                group_name: data.groupName,
+                group_ref: data.groupID,
+            })])
         }
     }).then((writeResult) => {
         console.log("Add user as member in group and group as participated_group in user");
@@ -170,7 +169,7 @@ exports.addCabinetToGroup = functions.https.onCall((data, context) => {
         description: "",
     }).then(() => {
         console.log("add cabinet to specific group");
-        return {cabinet_ref: data.cabintID};
+        return { cabinet_ref: data.cabintID };
     });
     // TODO : 요청자가 해당 그룹의 owner나 admin인지 확인
     // TODO : 사물함이 존재하는지 검사
