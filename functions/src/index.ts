@@ -247,23 +247,34 @@ exports.addCabinetToGroup = functions.https.onCall((data, context) => {
   // TODO: 사물함이 존재하는지 확인
   // TODO: 이미 사물함이 다른 그룹에 가입되었는지 확인
   // TODO: 사물함의 serialKey와 일치하는지 확인
-  
+
   // cabinet가 가진 group_ref의 cabinet_ref에 해당 cabinet 추가
-  return db
-    .collection("groups")
-    .doc(data.groupId)
-    .collection("cabinet_ref")
-    .doc(data.cabinetId)
-    .set({
-      cabinet_ref: data.cabinetId,
-      description: ""
+  return isAdminOrOwnerInGroup(data.groupId, context.auth.uid)
+    .then(isAdminOrOwner => {
+      if (!isAdminOrOwner) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Permission denied"
+        );
+      }
     })
     .then(() => {
-      console.log("add cabinet to specific group");
-      return {
-        cabinetId: data.cabinetId,
-        groupId: data.groupId
-      };
+      db
+        .collection("groups")
+        .doc(data.groupId)
+        .collection("cabinet_ref")
+        .doc(data.cabinetId)
+        .set({
+          cabinet_ref: data.cabinetId,
+          description: ""
+        })
+        .then(() => {
+          console.log("add cabinet to specific group");
+          return {
+            cabinetId: data.cabinetId,
+            groupId: data.groupId
+          };
+        });
     });
 });
 
@@ -287,7 +298,7 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
   // TODO: 해당 사물함이 존재하는지 확인함.
   // TODO: 해당 사용자가 사물함을 열 권한이 있는지 확인함.
   // TODO: 해당 사물함의 RealtimeDB에서의 열림 상태를 받아와서 바꿈.
-})
+});
 
 /**
  * 사용자가 가입할 때, 해당 사용자의 문서를 users 컬렉션에 생성함.
@@ -349,20 +360,11 @@ exports.deleteAllFromGroup = functions.firestore
         .collection("participated_group")
         .doc(context.params.groupId)
         .delete(),
-      deleteAllUserInRoleFromGroup(
-        group_doc_path + "/admin_ref/",
-        100
-      ),
-      deleteAllUserInRoleFromGroup(
-        group_doc_path + "/member_ref/",
-        100
-      ),
-      deleteCollection(
-        group_doc_path + "/cabinet_ref/",
-        100
-      )
-    ]).then(function() {
+      deleteAllUserInRoleFromGroup(group_doc_path + "/admin_ref/", 100),
+      deleteAllUserInRoleFromGroup(group_doc_path + "/member_ref/", 100),
+      deleteCollection(group_doc_path + "/cabinet_ref/", 100)
+    ]).then(() => {
       console.log("delete all lower documents and nested information.");
-      return { groupId : snap.id }
+      return { groupId: snap.id };
     });
   });
