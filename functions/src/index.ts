@@ -243,7 +243,11 @@ exports.addMemberToGroup = functions.https.onCall((data, context) => {
  * serialKey: 추가할 사물함의 시리얼 키
  */
 exports.addCabinetToGroup = functions.https.onCall((data, context) => {
-  // TODO: 직접호출 문서 참고해서 예외처리 해야함
+  // TODO: 요청한 사용자가 이 그룹의 관리자 또는 소유자인지 확인
+  // TODO: 사물함이 존재하는지 확인
+  // TODO: 이미 사물함이 다른 그룹에 가입되었는지 확인
+  // TODO: 사물함의 serialKey와 일치하는지 확인
+  
   // cabinet가 가진 group_ref의 cabinet_ref에 해당 cabinet 추가
   return db
     .collection("groups")
