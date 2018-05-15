@@ -275,6 +275,17 @@ exports.createGroup = functions.https.onCall((data, context) => {
 });
 
 /**
+ * 사물함을 열거나 닫음.
+ * data에는 다음과 같은 키값이 포함된다.
+ * cabinetId: 열려고 하는 사물함의 cabinets 컬렉션 내의 문서의 ID(cabinets/{cabinetId})
+ */
+exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
+  // TODO: 해당 사물함이 존재하는지 확인함.
+  // TODO: 해당 사용자가 사물함을 열 권한이 있는지 확인함.
+  // TODO: 해당 사물함의 RealtimeDB에서의 열림 상태를 받아와서 바꿈.
+})
+
+/**
  * 사용자가 가입할 때, 해당 사용자의 문서를 users 컬렉션에 생성함.
  */
 exports.createUser = functions.auth.user().onCreate((userRecord, context) => {
