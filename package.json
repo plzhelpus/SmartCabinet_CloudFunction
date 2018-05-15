@@ -1,0 +1,21 @@
+{
+  "name": "smartcabinet_firebase",
+  "version": "0.1.0",
+  "description": "smart cabinet server",
+  "main": "functions/src/index.ts",
+  "scripts": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plzhelpus/SmartCabinet_CloudFunction.git"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/plzhelpus/SmartCabinet_CloudFunction/issues"
+  },
+  "homepage": "https://github.com/plzhelpus/SmartCabinet_CloudFunction#readme",
+  "dependencies": {
+    "tslint": "^5.10.0",
+    "typescript": "^2.8.3"
+  }
+}
