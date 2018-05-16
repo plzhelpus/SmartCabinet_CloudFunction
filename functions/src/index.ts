@@ -34,7 +34,7 @@ function deleteQueryBatch(query, batchSize, resolve, reject) {
   query
     .get()
     .then(snapshot => {
-      if (snapshot.size == 0) {
+      if (snapshot.size === 0) {
         return 0;
       }
 
@@ -96,7 +96,7 @@ function deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
   query
     .get()
     .then(snapshot => {
-      if (snapshot.size == 0) {
+      if (snapshot.size === 0) {
         return 0;
       }
 
@@ -159,7 +159,7 @@ function isGroupExist(groupName) {
     .where("group_name", "==", groupName)
     .get()
     .then(snapshot => {
-      if (snapshot.size == 0) {
+      if (snapshot.size === 0) {
         return false;
       }
       return true;
@@ -178,7 +178,7 @@ function isAdminOrOwnerInGroup(groupId, userId) {
   const groupAdminRef = groupRef.collection("admin_ref");
   return groupRef.get().then(groupDoc => {
     // 해당 유저가 소유자가 아니라면 관리자인지 확인
-    if (userRef != groupDoc.get("owner_ref")) {
+    if (userRef !== groupDoc.get("owner_ref")) {
       return groupAdminRef
         .doc(userRef.id)
         .get()
@@ -215,7 +215,7 @@ function isGroupMember(groupId, userId) {
  * email: 새로 추가될  회원의 email
  * 자세한 내용은 '클라우드함수 직접호출' 문서 참고
  */
-exports.addMemberToGroup = functions.https.onCall((data, context) => {
+exports.addMemberInGroup = functions.https.onCall((data, context) => {
   return isAdminOrOwnerInGroup(data.groupId, context.auth.uid)
     .then(isAdminOrOwner => {
       if (!isAdminOrOwner) {
@@ -227,7 +227,7 @@ exports.addMemberToGroup = functions.https.onCall((data, context) => {
       return findUserIdByEmail(data.email);
     })
     .then(user_id => {
-      if (user_id == null) {
+      if (user_id === null) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "User not exist"
@@ -272,7 +272,7 @@ exports.addMemberToGroup = functions.https.onCall((data, context) => {
  * cabinetId: 추가할 사물함의 cabinets 컬렉션 내의 문서의 ID(cabinets/{cabinetId})
  * serialKey: 추가할 사물함의 시리얼 키
  */
-exports.addCabinetToGroup = functions.https.onCall((data, context) => {
+exports.addCabinetInGroup = functions.https.onCall((data, context) => {
   return isAdminOrOwnerInGroup(data.groupId, context.auth.uid)
     .then(isAdminOrOwner => {
       if (!isAdminOrOwner) {
@@ -287,21 +287,21 @@ exports.addCabinetToGroup = functions.https.onCall((data, context) => {
         .get();
     })
     .then(cabinetDoc => {
-      if (cabinetDoc == null && !cabinetDoc.exists) {
+      if (cabinetDoc === null && !cabinetDoc.exists) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Cabinet not exist"
         );
       }
       const expectedSerialKey = cabinetDoc.get("serial_key");
-      if (expectedSerialKey != data.serialKey) {
+      if (expectedSerialKey !== data.serialKey) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Invalid serial key"
         );
       }
       const groupRefOfCabinet = cabinetDoc.get("group_ref");
-      if (groupRefOfCabinet != null) {
+      if (groupRefOfCabinet !== null) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Cabinet already has group"
@@ -379,7 +379,7 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
     .doc(data.cabinetId)
     .get()
     .then(cabinetDoc => {
-      if (cabinetDoc == null && !cabinetDoc.exists) {
+      if (cabinetDoc === null && !cabinetDoc.exists) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Cabinet not exist"
@@ -387,7 +387,7 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
       }
       const groupRefOfCabinet = cabinetDoc.get("group_ref");
       // 그룹에 속하지 않은 사물함도 열 권한이 없다고 간주함.
-      if (groupRefOfCabinet == null) {
+      if (groupRefOfCabinet === null) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Permission denied"
@@ -412,7 +412,7 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
           "Permission denied"
         );
       }
-      
+
       const openStateRef = realtimeDb.ref(
         "cabinets/" + data.cabinetId + "/open_state"
       );
