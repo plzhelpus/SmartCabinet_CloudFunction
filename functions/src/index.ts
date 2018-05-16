@@ -342,22 +342,18 @@ exports.createGroup = functions.https.onCall((data, context) => {
           "Duplicated group name"
         );
       }
-      // TODO: 굳이 auth().getUser를 쓰지 않고 context.auth.token.email에 값이 저장되어 있으면 그걸 넣고 테스트
-      return admin.auth().getUser(context.auth.uid);
-    })
-    .then(ownerUserRecord => {
       // FIXME: 이 두 문서 중 하나만 생성하고 에러가 났다면 DB가 오염됨
       return db
         .collection("groups")
         .add({
           group_name: data.groupName,
-          owner_ref: db.collection("users").doc(ownerUserRecord.uid),
-          owner_email: ownerUserRecord.email
+          owner_ref: db.collection("users").doc(context.auth.token.email),
+          owner_email: context.auth.token.email
         })
         .then(groupRef => {
           return db
             .collection("users")
-            .doc(ownerUserRecord.uid)
+            .doc(context.auth.uid)
             .collection("participated_group")
             .doc(groupRef.id)
             .set({
@@ -416,7 +412,19 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
           "Permission denied"
         );
       }
-      // TODO: 해당 사물함의 RealtimeDB에서의 열림 상태를 받아와서 바꿈.
+      
+      const openStateRef = realtimeDb.ref(
+        "cabinets/" + data.cabinetId + "/open_state"
+      );
+      return openStateRef.once("value").then(openState => {
+        return openStateRef.set(!openState).then(() => {
+          console.log("request open/close cabinet - " + openState);
+          return {
+            cabinetId: data.cabinetId,
+            openState: !openState
+          };
+        });
+      });
     });
 });
 
