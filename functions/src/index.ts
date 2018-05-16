@@ -342,6 +342,7 @@ exports.createGroup = functions.https.onCall((data, context) => {
           "Duplicated group name"
         );
       }
+      // TODO: 굳이 auth().getUser를 쓰지 않고 context.auth.token.email에 값이 저장되어 있으면 그걸 넣고 테스트
       return admin.auth().getUser(context.auth.uid);
     })
     .then(ownerUserRecord => {
