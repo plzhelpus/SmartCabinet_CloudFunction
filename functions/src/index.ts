@@ -145,6 +145,11 @@ function findUserIdByEmail(email) {
     .getUserByEmail(email)
     .then(userRecord => {
       return userRecord.email;
+    }).catch(error=>{
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "User not exist"
+      );
     });
 }
 
@@ -347,7 +352,7 @@ exports.createGroup = functions.https.onCall((data, context) => {
         .collection("groups")
         .add({
           group_name: data.groupName,
-          owner_ref: db.collection("users").doc(context.auth.token.email),
+          owner_ref: db.collection("users").doc(context.auth.uid),
           owner_email: context.auth.token.email
         })
         .then(groupRef => {
