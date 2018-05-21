@@ -144,7 +144,7 @@ function findUserIdByEmail(email) {
     .auth()
     .getUserByEmail(email)
     .then(userRecord => {
-      return userRecord.email;
+      return userRecord.uid;
     })
     .catch(error => {
       throw new functions.https.HttpsError(
