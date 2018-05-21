@@ -145,7 +145,8 @@ function findUserIdByEmail(email) {
     .getUserByEmail(email)
     .then(userRecord => {
       return userRecord.email;
-    }).catch(error=>{
+    })
+    .catch(error => {
       throw new functions.https.HttpsError(
         "invalid-argument",
         "User not exist"
@@ -178,14 +179,14 @@ function isGroupExist(groupName) {
  * @returns 해당 그룹의 관리자나 소유자이면 true, 그 이외는 false
  */
 function isAdminOrOwnerInGroup(groupId, userId) {
-  const userRef = db.collection("users").doc(userId);
   const groupRef = db.collection("groups").doc(groupId);
   const groupAdminRef = groupRef.collection("admin_ref");
+
   return groupRef.get().then(groupDoc => {
     // 해당 유저가 소유자가 아니라면 관리자인지 확인
-    if (userRef !== groupDoc.get("owner_ref")) {
+    if (userId !== groupDoc.get("owner_ref").id) {
       return groupAdminRef
-        .doc(userRef.id)
+        .doc(userId)
         .get()
         .then(findResultFromAdmin => {
           return findResultFromAdmin.exists;
@@ -292,7 +293,7 @@ exports.addCabinetInGroup = functions.https.onCall((data, context) => {
         .get();
     })
     .then(cabinetDoc => {
-      if (cabinetDoc === null && !cabinetDoc.exists) {
+      if (cabinetDoc === null || !cabinetDoc.exists) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Cabinet not exist"
@@ -314,17 +315,23 @@ exports.addCabinetInGroup = functions.https.onCall((data, context) => {
       }
     })
     .then(() => {
-      return db
-        .collection("groups")
-        .doc(data.groupId)
-        .collection("cabinet_ref")
-        .doc(data.cabinetId)
-        .set({
-          cabinet_ref: data.cabinetId,
-          description: ""
-        });
+      return Promise.all([
+        db
+          .collection("groups")
+          .doc(data.groupId)
+          .collection("cabinet_ref")
+          .doc(data.cabinetId)
+          .set({
+            cabinet_ref: data.cabinetId,
+            description: ""
+          }),
+        db
+          .collection("cabinets")
+          .doc(data.cabinetId)
+          .update("group_ref", db.collection("groups").doc(data.groupId))
+      ]);
     })
-    .then(writeResult => {
+    .then(writeResults => {
       console.log("add cabinet to specific group");
       return {
         cabinetId: data.cabinetId,
