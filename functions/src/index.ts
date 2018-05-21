@@ -450,8 +450,8 @@ exports.createUser = functions.auth.user().onCreate((userRecord, context) => {
     .set({
       email: userRecord.email
     })
-    .then(() => {
-      console.log("User firebase is added at ${res.updateTime}");
+    .then(res => {
+      console.log("User is added in firebase");
     });
 });
 
@@ -468,7 +468,7 @@ exports.deleteCabinetInGroup = functions.firestore
         group_ref: null
       })
       .then(res => {
-        console.log("Group is deleted from cabinet at ${res.updateTime}");
+        console.log("Group is deleted from cabinet");
       });
   });
 
@@ -480,7 +480,10 @@ exports.deleteUser = functions.auth.user().onDelete((userRecord, context) => {
   return db
     .collection("users")
     .doc(userRecord.uid)
-    .delete();
+    .delete()
+    .then(res => {
+      console.log("User is deleted from firebase");
+    });
 });
 
 /**
