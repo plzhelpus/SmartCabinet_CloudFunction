@@ -222,16 +222,7 @@ function isGroupMember(groupId, userId) {
  * 자세한 내용은 '클라우드함수 직접호출' 문서 참고
  */
 exports.addMemberInGroup = functions.https.onCall((data, context) => {
-  return isAdminOrOwnerInGroup(data.groupId, context.auth.uid)
-    .then(isAdminOrOwner => {
-      if (!isAdminOrOwner) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Permission denied"
-        );
-      }
-      return findUserIdByEmail(data.email);
-    })
+  return findUserIdByEmail(data.email)
     .then(user_id => {
       if (user_id === null) {
         throw new functions.https.HttpsError(
@@ -239,27 +230,54 @@ exports.addMemberInGroup = functions.https.onCall((data, context) => {
           "User not exist"
         );
       }
-      // FIXME: 만약 둘 중 하나만 성공한다면 DB가 오염됨.
-      return Promise.all([
-        db
-          .collection("groups")
-          .doc(data.groupId)
-          .collection("member_ref")
-          .doc(user_id)
-          .set({
-            email: data.email,
-            user_ref: user_id
-          }),
-        db
-          .collection("users")
-          .doc(user_id)
-          .collection("participated_group")
-          .doc(data.groupId)
-          .set({
-            group_name: data.groupName,
-            group_ref: data.groupId
-          })
-      ]);
+      return db
+        .collection("users")
+        .doc(user_id)
+        .collection("participated_group")
+        .doc(data.groupId)
+        .get()
+        .then(resultDoc => {
+          if (resultDoc !== null && resultDoc.exists) {
+            throw new functions.https.HttpsError(
+              "invalid-argument",
+              "User is already in this group"
+            );
+          }
+          return isAdminOrOwnerInGroup(data.groupId, context.auth.uid);
+        })
+        .then(isAdminOrOwner => {
+          if (!isAdminOrOwner) {
+            throw new functions.https.HttpsError(
+              "invalid-argument",
+              "Permission denied"
+            );
+          }
+          return db
+            .collection("groups")
+            .doc(data.groupId)
+            .get();
+        })
+        .then(groupDoc => {
+          // FIXME: 만약 둘 중 하나만 성공한다면 DB가 오염됨.
+          return Promise.all([
+            groupDoc.ref
+              .collection("member_ref")
+              .doc(user_id)
+              .set({
+                email: data.email,
+                user_ref: db.collection("users").doc(user_id)
+              }),
+            db
+              .collection("users")
+              .doc(user_id)
+              .collection("participated_group")
+              .doc(data.groupId)
+              .set({
+                group_name: groupDoc.get("group_name"),
+                group_ref: groupDoc.ref
+              })
+          ]);
+        });
     })
     .then(writeResults => {
       console.log(
@@ -279,19 +297,10 @@ exports.addMemberInGroup = functions.https.onCall((data, context) => {
  * serialKey: 추가할 사물함의 시리얼 키
  */
 exports.addCabinetInGroup = functions.https.onCall((data, context) => {
-  return isAdminOrOwnerInGroup(data.groupId, context.auth.uid)
-    .then(isAdminOrOwner => {
-      if (!isAdminOrOwner) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Permission denied"
-        );
-      }
-      return db
-        .collection("cabinets")
-        .doc(data.cabinetId)
-        .get();
-    })
+  return db
+    .collection("cabinets")
+    .doc(data.cabinetId)
+    .get()
     .then(cabinetDoc => {
       if (cabinetDoc === null || !cabinetDoc.exists) {
         throw new functions.https.HttpsError(
@@ -313,6 +322,16 @@ exports.addCabinetInGroup = functions.https.onCall((data, context) => {
           "Cabinet already has group"
         );
       }
+
+      return isAdminOrOwnerInGroup(data.groupId, context.auth.uid);
+    })
+    .then(isAdminOrOwner => {
+      if (!isAdminOrOwner) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Permission denied"
+        );
+      }
     })
     .then(() => {
       return Promise.all([
@@ -322,7 +341,7 @@ exports.addCabinetInGroup = functions.https.onCall((data, context) => {
           .collection("cabinet_ref")
           .doc(data.cabinetId)
           .set({
-            cabinet_ref: data.cabinetId,
+            cabinet_ref: db.collection("cabinets").doc(data.cabinetId),
             description: ""
           }),
         db
@@ -391,7 +410,7 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
     .doc(data.cabinetId)
     .get()
     .then(cabinetDoc => {
-      if (cabinetDoc === null && !cabinetDoc.exists) {
+      if (cabinetDoc === null || !cabinetDoc.exists) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Cabinet not exist"
@@ -406,8 +425,8 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
         );
       }
       return isGroupMember(groupRefOfCabinet.id, context.auth.uid).then(
-        memberPermissionResult => {
-          if (!memberPermissionResult) {
+        isMember => {
+          if (!isMember) {
             return isAdminOrOwnerInGroup(
               groupRefOfCabinet.id,
               context.auth.uid
@@ -417,8 +436,8 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
         }
       );
     })
-    .then(adminPermissionResult => {
-      if (!adminPermissionResult) {
+    .then(permissionResult => {
+      if (!permissionResult) {
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Permission denied"
