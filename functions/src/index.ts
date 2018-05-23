@@ -449,6 +449,11 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
     });
 });
 
+/**
+ * 해당 그룹을 나감.
+ * data에는 다음과 같은 키값이 포함된다.
+ * groupId: 나가려는 그룹의 ID(groups/{groupId})
+ */
 exports.leaveGroup = functions.https.onCall((data, context) => {
   return db.runTransaction(transaction => {
     const userId = context.auth.uid;
