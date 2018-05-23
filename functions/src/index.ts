@@ -332,7 +332,7 @@ exports.addCabinetInGroup = functions.https.onCall((data, context) => {
             transaction.update(db.collection("cabinets").doc(data.cabinetId), {
               group_ref: db.collection("groups").doc(data.groupId)
             });
-            return Promise.resolve();
+            return;
           });
       });
     })
@@ -359,27 +359,27 @@ exports.createGroup = functions.https.onCall((data, context) => {
           "Duplicated group name"
         );
       }
-      // FIXME: 이 두 문서 중 하나만 생성하고 에러가 났다면 DB가 오염됨
-      return db
-        .collection("groups")
-        .add({
+      const batch = db.batch();
+      const groupRef = db.collection("groups").doc();
+      batch.set(groupRef, {
+        group_name: data.groupName,
+        owner_ref: db.collection("users").doc(context.auth.uid),
+        owner_email: context.auth.token.email
+      });
+      batch.set(
+        db
+          .collection("users")
+          .doc(context.auth.uid)
+          .collection("participated_group")
+          .doc(groupRef.id),
+        {
           group_name: data.groupName,
-          owner_ref: db.collection("users").doc(context.auth.uid),
-          owner_email: context.auth.token.email
-        })
-        .then(groupRef => {
-          return db
-            .collection("users")
-            .doc(context.auth.uid)
-            .collection("participated_group")
-            .doc(groupRef.id)
-            .set({
-              group_name: data.groupName,
-              group_ref: groupRef
-            });
-        });
+          group_ref: groupRef
+        }
+      );
+      return batch.commit();
     })
-    .then(result => {
+    .then(results => {
       console.log("create new group");
       return { groupName: data.groupName };
     });
