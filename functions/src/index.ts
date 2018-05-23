@@ -449,6 +449,38 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
     });
 });
 
+exports.leaveGroup = functions.https.onCall((data, context) => {
+  return db.runTransaction(transaction => {
+    const userId = context.auth.uid;
+    const groupRef = db.collection("groups").doc(data.groupId);
+    return transaction
+      .getAll(
+        groupRef.collection("admin_ref").doc(userId),
+        groupRef.collection("member_ref").doc(context.auth.uid)
+      )
+      .then(docs => {
+        const adminDoc = docs[0];
+        const memberDoc = docs[1];
+        if (!adminDoc.exists && !memberDoc.exists) {
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "User is not admin nor member"
+          );
+        }
+        // 꼼수: 두 문서를 참조했기 때문에, 현재 Firestore에서 제공하는 트랜젝션 제약사항 상, 둘 다 삭제해야 함.
+        transaction.delete(memberDoc.ref);
+        transaction.delete(adminDoc.ref);
+        transaction.delete(
+          db
+            .collection("users")
+            .doc(userId)
+            .collection("participated_group")
+            .doc(data.groupId)
+        );
+      });
+  });
+});
+
 /**
  * 사용자가 가입할 때, 해당 사용자의 문서를 users 컬렉션에 생성함.
  */
@@ -501,7 +533,7 @@ exports.deleteUser = functions.auth.user().onDelete((userRecord, context) => {
 exports.deleteAllFromGroup = functions.firestore
   .document("groups/{groupId}")
   .onDelete((snap, context) => {
-    // FIXME: 만약 이 중 하나가 실패할 경우 DB가 오염됨
+    // FIXME: 만약 이 중 하나가 실패할 경우 DB가 오염됨 (현재로서는 이 모든 작업을 하나로 묶을 수 없음)
     return Promise.all([
       snap
         .get("owner_ref")
