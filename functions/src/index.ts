@@ -430,19 +430,22 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
         );
       }
 
-      // FIXME: 원자성이 보장되어야 함.
       const openStateRef = realtimeDb.ref(
         "cabinets/" + data.cabinetId + "/open_state"
       );
-      return openStateRef.once("value").then(openState => {
-        return openStateRef.set(!openState).then(() => {
-          console.log("request open/close cabinet - " + openState);
+      return openStateRef
+        .transaction(openState => {
+          return !openState;
+        })
+        .then(value => {
+          if (value.committed) {
+            console.log("request open/close cabinet - " + value.snapshot.val());
+          }
           return {
             cabinetId: data.cabinetId,
-            openState: !openState
+            openState: value.snapshot.val()
           };
         });
-      });
     });
 });
 
