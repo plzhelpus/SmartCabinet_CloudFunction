@@ -11,11 +11,10 @@ const realtimeDb = admin.database();
 
 /**
  * 지정된 컬렉션의 모든 문서를 삭제함.
- * @param collectionPath 삭제할 컬렉션의 경로
+ * @param collectionRef 삭제할 컬렉션의 CollectionReference
  * @param batchSize 삭제할 문서를 검색할 때 한번에 불러올 문서 수
  */
-function deleteCollection(collectionPath, batchSize) {
-  const collectionRef = db.collection(collectionPath);
+function deleteCollection(collectionRef, batchSize) {
   const query = collectionRef.orderBy("__name__").limit(batchSize);
 
   return new Promise((resolve, reject) => {
@@ -62,20 +61,14 @@ function deleteQueryBatch(query, batchSize, resolve, reject) {
 /**
  * 그룹에서 해당 역할을 가지는 모든 유저들을 삭제함.
  * 주의 : 해당 함수에서 실제로 호출되는 batch의 수는 batchSize * 2입니다. 삭제될 때 해당 유저의 소속된 그룹에서도 이 그룹을 가리키는 문서를 삭제해야 하기 때문입니다.
- * @param roleCollectionPath 해당 역할을 가리키는 컬렉션의 경로
+ * @param collectionRef 해당 역할을 가리키는 컬렉션의 CollectionReference
  * @param batchSize 삭제할 문서를 검색할 때 한번에 불러올 문서 수
  */
-function deleteAllUserInRoleFromGroup(roleCollectionPath, batchSize) {
-  const collectionRef = db.collection(roleCollectionPath);
+function deleteAllUserInRoleFromGroup(collectionRef, batchSize) {
   const query = collectionRef.orderBy("__name__").limit(batchSize);
 
   return new Promise((resolve, reject) => {
-    deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
-      query,
-      batchSize,
-      resolve,
-      reject
-    );
+    deleteGroupUserQueryBatch(query, batchSize, resolve, reject);
   });
 }
 
@@ -87,12 +80,7 @@ function deleteAllUserInRoleFromGroup(roleCollectionPath, batchSize) {
  * @param resolve Promise.resolve()
  * @param reject Promise.reject()
  */
-function deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
-  query,
-  batchSize,
-  resolve,
-  reject
-) {
+function deleteGroupUserQueryBatch(query, batchSize, resolve, reject) {
   query
     .get()
     .then(snapshot => {
@@ -102,14 +90,14 @@ function deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
 
       const batch = db.batch();
       snapshot.docs.forEach(doc => {
-        const group_id = doc.ref.parent.parent.id;
+        // TODO: 되는건지 안되는건지 테스트 필요
+        batch.delete(doc.ref);
         batch.delete(
           doc
             .get("user_ref")
             .collection("participated_group")
-            .doc(group_id)
+            .doc(doc.ref.parent.parent.id)
         );
-        batch.delete(doc.ref);
       });
 
       return batch.commit().then(() => {
@@ -122,12 +110,7 @@ function deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
         return;
       }
       process.nextTick(() => {
-        deleteUserQueryBatchAndDeleteGroupInParticipatedGroup(
-          query,
-          batchSize,
-          resolve,
-          reject
-        );
+        deleteGroupUserQueryBatch(query, batchSize, resolve, reject);
       });
     })
     .catch(reject);
@@ -256,6 +239,12 @@ exports.addMemberInGroup = functions.https.onCall((data, context) => {
             return transaction
               .get(db.collection("groups").doc(data.groupId))
               .then(groupDoc => {
+                if (!groupDoc.exists) {
+                  throw new functions.https.HttpsError(
+                    "invalid-argument",
+                    "Group not exist"
+                  );
+                }
                 transaction.create(
                   groupDoc.ref.collection("member_ref").doc(user_id),
                   {
@@ -274,7 +263,7 @@ exports.addMemberInGroup = functions.https.onCall((data, context) => {
                     group_ref: groupDoc.ref
                   }
                 );
-                return Promise.resolve();
+                return;
               });
           });
         });
@@ -297,34 +286,7 @@ exports.addMemberInGroup = functions.https.onCall((data, context) => {
  * serialKey: 추가할 사물함의 시리얼 키
  */
 exports.addCabinetInGroup = functions.https.onCall((data, context) => {
-  return db
-    .collection("cabinets")
-    .doc(data.cabinetId)
-    .get()
-    .then(cabinetDoc => {
-      if (cabinetDoc === null || !cabinetDoc.exists) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Cabinet not exist"
-        );
-      }
-      const expectedSerialKey = cabinetDoc.get("serial_key");
-      if (expectedSerialKey !== data.serialKey) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Invalid serial key"
-        );
-      }
-      const groupRefOfCabinet = cabinetDoc.get("group_ref");
-      if (groupRefOfCabinet !== null) {
-        throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Cabinet already has group"
-        );
-      }
-
-      return isAdminOrOwnerInGroup(data.groupId, context.auth.uid);
-    })
+  return isAdminOrOwnerInGroup(data.groupId, context.auth.uid)
     .then(isAdminOrOwner => {
       if (!isAdminOrOwner) {
         throw new functions.https.HttpsError(
@@ -332,26 +294,49 @@ exports.addCabinetInGroup = functions.https.onCall((data, context) => {
           "Permission denied"
         );
       }
+      return db.runTransaction(transaction => {
+        return transaction
+          .get(db.collection("cabinets").doc(data.cabinetId))
+          .then(cabinetDoc => {
+            if (cabinetDoc === null || !cabinetDoc.exists) {
+              throw new functions.https.HttpsError(
+                "invalid-argument",
+                "Cabinet not exist"
+              );
+            }
+            const expectedSerialKey = cabinetDoc.get("serial_key");
+            if (expectedSerialKey !== data.serialKey) {
+              throw new functions.https.HttpsError(
+                "invalid-argument",
+                "Invalid serial key"
+              );
+            }
+            const groupRefOfCabinet = cabinetDoc.get("group_ref");
+            if (groupRefOfCabinet !== null) {
+              throw new functions.https.HttpsError(
+                "invalid-argument",
+                "Cabinet already has group"
+              );
+            }
+            transaction.create(
+              db
+                .collection("groups")
+                .doc(data.groupId)
+                .collection("cabinet_ref")
+                .doc(data.cabinetId),
+              {
+                cabinet_ref: db.collection("cabinets").doc(data.cabinetId),
+                description: ""
+              }
+            );
+            transaction.update(db.collection("cabinets").doc(data.cabinetId), {
+              group_ref: db.collection("groups").doc(data.groupId)
+            });
+            return Promise.resolve();
+          });
+      });
     })
     .then(() => {
-      // FIXME: 만약 둘 중 하나만 성공한다면 DB가 오염됨.
-      return Promise.all([
-        db
-          .collection("groups")
-          .doc(data.groupId)
-          .collection("cabinet_ref")
-          .doc(data.cabinetId)
-          .set({
-            cabinet_ref: db.collection("cabinets").doc(data.cabinetId),
-            description: ""
-          }),
-        db
-          .collection("cabinets")
-          .doc(data.cabinetId)
-          .update("group_ref", db.collection("groups").doc(data.groupId))
-      ]);
-    })
-    .then(writeResults => {
       console.log("add cabinet to specific group");
       return {
         cabinetId: data.cabinetId,
@@ -513,17 +498,16 @@ exports.deleteUser = functions.auth.user().onDelete((userRecord, context) => {
 exports.deleteAllFromGroup = functions.firestore
   .document("groups/{groupId}")
   .onDelete((snap, context) => {
-    const group_doc_path = "groups/" + context.params.groupId;
     // FIXME: 만약 이 중 하나가 실패할 경우 DB가 오염됨
     return Promise.all([
-      db
-        .doc(snap.get("owner_ref"))
+      snap
+        .get("owner_ref")
         .collection("participated_group")
         .doc(context.params.groupId)
         .delete(),
-      deleteAllUserInRoleFromGroup(group_doc_path + "/admin_ref/", 100),
-      deleteAllUserInRoleFromGroup(group_doc_path + "/member_ref/", 100),
-      deleteCollection(group_doc_path + "/cabinet_ref/", 100)
+      deleteAllUserInRoleFromGroup(snap.ref.collection("admin_ref"), 50),
+      deleteAllUserInRoleFromGroup(snap.ref.collection("member_ref"), 50),
+      deleteCollection(snap.ref.collection("cabinet_ref"), 100)
     ]).then(() => {
       console.log("delete all lower documents and nested information.");
       return { groupId: snap.id };
