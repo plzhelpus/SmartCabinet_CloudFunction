@@ -252,34 +252,34 @@ exports.addMemberInGroup = functions.https.onCall((data, context) => {
               "Permission denied"
             );
           }
-          return db
-            .collection("groups")
-            .doc(data.groupId)
-            .get();
-        })
-        .then(groupDoc => {
-          // FIXME: 만약 둘 중 하나만 성공한다면 DB가 오염됨.
-          return Promise.all([
-            groupDoc.ref
-              .collection("member_ref")
-              .doc(user_id)
-              .set({
-                email: data.email,
-                user_ref: db.collection("users").doc(user_id)
-              }),
-            db
-              .collection("users")
-              .doc(user_id)
-              .collection("participated_group")
-              .doc(data.groupId)
-              .set({
-                group_name: groupDoc.get("group_name"),
-                group_ref: groupDoc.ref
-              })
-          ]);
+          return db.runTransaction(transaction => {
+            return transaction
+              .get(db.collection("groups").doc(data.groupId))
+              .then(groupDoc => {
+                transaction.create(
+                  groupDoc.ref.collection("member_ref").doc(user_id),
+                  {
+                    email: data.email,
+                    user_ref: db.collection("users").doc(user_id)
+                  }
+                );
+                transaction.create(
+                  db
+                    .collection("users")
+                    .doc(user_id)
+                    .collection("participated_group")
+                    .doc(data.groupId),
+                  {
+                    group_name: groupDoc.get("group_name"),
+                    group_ref: groupDoc.ref
+                  }
+                );
+                return Promise.resolve();
+              });
+          });
         });
     })
-    .then(writeResults => {
+    .then(() => {
       console.log(
         "Add user as member in group and group as participated_group in user"
       );
@@ -334,6 +334,7 @@ exports.addCabinetInGroup = functions.https.onCall((data, context) => {
       }
     })
     .then(() => {
+      // FIXME: 만약 둘 중 하나만 성공한다면 DB가 오염됨.
       return Promise.all([
         db
           .collection("groups")
@@ -444,6 +445,7 @@ exports.openOrCloseCabinet = functions.https.onCall((data, context) => {
         );
       }
 
+      // FIXME: 원자성이 보장되어야 함.
       const openStateRef = realtimeDb.ref(
         "cabinets/" + data.cabinetId + "/open_state"
       );
